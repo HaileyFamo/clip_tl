@@ -19,6 +19,9 @@ outputs/
 # Logs
 logs/
 
+# running configs
+configs.yaml
+
 # Development software files 
 .vscode/
 .cursor/
