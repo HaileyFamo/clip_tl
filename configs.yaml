@@ -1,0 +1,58 @@
+# configs.yaml
+
+model:
+  name: "hf-hub:laion/CLIP-ViT-B-32-DataComp.XL-s13B-b90K"
+  lens_bias: True 
+
+
+data:
+  path: "/nfs/turbo/coe-chaijy/janeding/regrounding/example_images"
+  batch_size: 128
+  num_workers: 8
+  validation_split: 0.1 # Add this to split dataset, 10% for validation
+
+
+optimizer:
+  name: "Adam"  # Adam, SGD
+  lr: 0.001
+  weight_decay: 1.0e-3
+  # Adam args
+  beta1: 0.9
+  beta2: 0.999
+  # SGD args
+  momentum: 0.9
+
+
+scheduler:
+  name: "CosineAnnealingLR" # StepLR, CosineAnnealingLR, None
+  # StepLR args
+  step_size: 10
+  gamma: 0.1
+  # CosineAnnealingLR args
+  T_max: 20000 # This will be dynamically calculated in the script
+
+
+training:
+  device: "auto" # "cuda", "cpu", "auto"
+  num_epochs: 10
+  validate_every_n_steps: 100
+  seed: 42
+  loss_function: "MSE" # "MSE" or "KL"
+  
+  # Early Stopping
+  early_stopping:
+    enabled: True
+    patience: 10       # stop after 10 checks without improvement
+    metric: "val_loss"    # "val_loss" or "train_loss"
+
+
+output:
+  # experiment result root directory
+  base_dir: "outputs" 
+  # experiment name, used to create subdirectories, if left empty, a timestamp will be automatically generated
+  experiment_name: "clip_lens_train_test_no_wandb" 
+
+logging:
+  # log level
+  level: "INFO" 
+  use_wandb: false 
