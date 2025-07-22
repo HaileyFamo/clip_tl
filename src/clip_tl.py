@@ -10,7 +10,7 @@ from copy import deepcopy
 import inspect
 import logging
 import open_clip
-from ingredients import CLIPModel, Unembed
+from src.ingredients import CLIPModel, Unembed
 # from model_surgery import *
 
 logger = logging.getLogger(__name__)

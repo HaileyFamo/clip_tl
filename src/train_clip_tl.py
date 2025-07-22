@@ -12,9 +12,9 @@ from tqdm import tqdm
 from torch.utils.data import DataLoader
 import open_clip
 
-from clip_tl import CLIPTunedLens, get_clip_hidden_states
-from ingredients import CLIPModel, ImageData, Optimizer
-from utils import plot_training_history
+from src.clip_tl import CLIPTunedLens, get_clip_hidden_states
+from src.ingredients import CLIPModel, ImageData, Optimizer
+from src.utils import plot_training_history
 
 logger = logging.getLogger(__name__)
 
@@ -372,7 +372,7 @@ class Train:
 
         # Plot training history
         fig_step, fig_avg = plot_training_history(
-            history_df=training_history,
+            history=training_history,
             output_dir=self.output_dir,
             exp_name=self.exp_name
         )

@@ -9,24 +9,8 @@ import yaml
 from pathlib import Path
 from typing import Union
 from datetime import datetime
-
-# --- Start of Path Setup ---
-# Find the project root directory, which is the parent of the 'src' directory
-# This makes the script runnable from anywhere.
-_project_root = Path(__file__).resolve().parent.parent
-
-# Add the project root to the Python path to allow for absolute imports
-# from within the project.
-sys.path.insert(0, str(_project_root))
-
-# Add src to path to allow for relative imports, though absolute is preferred.
-_src_path = _project_root / 'src'
-sys.path.insert(0, str(_src_path))
-# --- End of Path Setup ---
-
-
-from train_clip_tl import Train  # noqa: E402
-from ingredients import CLIPModel, ImageData, Optimizer  # noqa: E402
+from src.train_clip_tl import Train
+from src.ingredients import CLIPModel, ImageData, Optimizer
 
 
 def setup_logging(log_level: str = "INFO",
@@ -49,7 +33,19 @@ def load_config(config_path: str) -> dict:
     return config
 
 
-def main():
+def resolve_path_from_config(path_str: str, project_root: Path) -> Path:
+    """Resolve a path from a string.
+
+    if path_str is an absolute path, return it as is.
+    if path_str is a relative path, resolve it relative to the project root.
+    """
+    path = Path(path_str)
+    if path.is_absolute():
+        return path
+    return (project_root / path).resolve()
+
+
+def main(project_root: Path):
     """Main training function."""
     parser = argparse.ArgumentParser(
         description="Train CLIP TunedLens from a YAML config.")
@@ -62,14 +58,17 @@ def main():
     args = parser.parse_args()
 
     # --- Resolve Paths ---
-    # Config path is relative to the project root.
-    config_path = _project_root / args.config
+    # Config path is relative to the project root, or use absolute path
+    config_path = Path(args.config)
+    if not config_path.is_absolute():
+        config_path = project_root / config_path
+
     if not config_path.is_file():
         raise FileNotFoundError(
             f"Configuration file not found at: {config_path}")
 
     # Load config from YAML
-    config = load_config(config_path)
+    config = load_config(str(config_path))
 
     # --- Setup Output Directory ---
     output_cfg = config.get("output", {})
@@ -78,7 +77,8 @@ def main():
         exp_name = f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
     # Output base directory is relative to the project root.
-    base_dir = _project_root / output_cfg.get("base_dir", "outputs")
+    base_dir = resolve_path_from_config(output_cfg.get("base_dir", "outputs"),
+                                        project_root)
     output_dir = base_dir / exp_name
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -107,10 +107,10 @@ def main():
         model_name=config["model"]["name"],
         device=device
     )
-    # Data path is relative to the project root
-    data_path = config["data"]["path"]
+
+    data_path = resolve_path_from_config(config["data"]["path"], project_root)
     data = ImageData(
-        data_path=data_path,
+        data_path=str(data_path),  # ImageData expects a string path
         batch_size=config["data"]["batch_size"],
         num_workers=config["data"]["num_workers"],
         validation_split=config["data"].get("validation_split", 0.0)
@@ -129,7 +129,7 @@ def main():
         model=model,
         data=data,
         optimizer=optimizer,
-        project_root=_project_root,
+        project_root=project_root,
     )
 
     try:
@@ -149,7 +149,3 @@ def main():
         raise
 
     logger.info("All done!")
-
-
-if __name__ == "__main__":
-    main()
