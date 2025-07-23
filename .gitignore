@@ -21,8 +21,13 @@ outputs/
 # Logs
 logs/
 
+# wandb
+**/wandb/
+sweep.yaml
+
 # running configs
 configs.yaml
+analyze_config.yaml
 
 # Development software files 
 .vscode/

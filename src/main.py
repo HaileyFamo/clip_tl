@@ -1,4 +1,5 @@
-#!/usr/bin/env python3
+# src/main.py
+
 """Main script for training CLIP TunedLens."""
 
 import argparse
@@ -13,7 +14,7 @@ import wandb
 
 def main(project_root: Path):
     """Main training function."""
-    
+
     parser = argparse.ArgumentParser(
         description="Train CLIP TunedLens from a YAML config.")
     parser.add_argument(
@@ -22,7 +23,7 @@ def main(project_root: Path):
         default="configs.yaml",
         help="Path to the YAML configuration file, relative to project root.",
     )
-    args = parser.parse_args()
+    args, unknown = parser.parse_known_args()
 
     # --- Resolve Paths ---
     # Config path is relative to the project root, or use absolute path
@@ -36,28 +37,6 @@ def main(project_root: Path):
 
     # Load config from YAML
     config = load_config(str(config_path))
-
-    # --- Setup WandB ---
-    def update_config(original_config, sweep_params):
-        for key, value in sweep_params.items():
-            if '.' in key:
-                keys = key.split('.')
-                d = original_config
-                for k in keys[:-1]:
-                    d = d.setdefault(k, {})
-                d[keys[-1]] = value
-            else:
-                original_config[key] = value
-
-    use_wandb = config.get("use_wandb", False)
-    if use_wandb:
-        wandb.init(
-            project="clip-tl",
-            name=config.get("experiment_name"),
-            config=config
-        )
-        sweep_config = wandb.config
-        update_config(config, sweep_config)
 
     # --- Setup Output Directory ---
     output_cfg = config.get("output", {})
@@ -80,6 +59,30 @@ def main(project_root: Path):
     logger.info("Starting training with config: %s", args.config)
     logger.info("Output directory: %s", output_dir)
     logger.info("Log file: %s", log_path)
+
+    # --- Setup WandB ---
+    def update_config(original_config, sweep_params):
+        for key, value in sweep_params.items():
+            if '.' in key:
+                keys = key.split('.')
+                d = original_config
+                for k in keys[:-1]:
+                    d = d.setdefault(k, {})
+                d[keys[-1]] = value
+            else:
+                original_config[key] = value
+
+    use_wandb = log_cfg.get("use_wandb", False)
+    logger.info(f"use_wandb: {use_wandb}")
+    if use_wandb:
+        wandb.init(
+            project="clip-tl",
+            name=config.get("experiment_name"),
+            config=config,
+            dir=str(config.get("output_dir"))
+        )
+        sweep_config = wandb.config
+        update_config(config, sweep_config)
 
     # Save the config for this run for reproducibility
     shutil.copyfile(config_path, output_dir / "config.yaml")

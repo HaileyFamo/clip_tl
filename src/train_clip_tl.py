@@ -481,18 +481,7 @@ class Train:
             checkpoint_path = self.checkpoint_dir / 'best_model.pth'
             logger.info(f'Saving best model checkpoint at epoch {epoch}, '
                         f'epoch_step {epoch_step}, global_step {global_step} '
-                        f'with metrics {metrics}')
-            if self.use_wandb and wandb.run:
-                # create wandb artifact
-                artifact = wandb.Artifact(
-                    name=f'{wandb.run.name}_best_lens',
-                    type='model',
-                    metadata={'epoch': epoch,
-                              'epoch_step': epoch_step,
-                              'global_step': global_step,
-                              'metrics': metrics})
-                artifact.add_file(checkpoint_path.as_posix())
-                wandb.log_artifact(artifact, aliases=['best', 'latest'])
+                        f'with metrics {metrics}.')
         else:
             checkpoint_path = (self.checkpoint_dir /
                                f'checkpoint_e{epoch}_gs{global_step}.pth')
@@ -506,4 +495,17 @@ class Train:
                                      if self.scheduler is not None else None),
             'metrics': metrics,
         }, checkpoint_path)
-        logger.info(f'Checkpoint saved to {checkpoint_path.as_posix()}')
+        logger.info(f'Checkpoint saved to {checkpoint_path.as_posix()}.')
+
+        # --- Save best model to wandb ---
+        if self.use_wandb and wandb.run and is_best:
+            logger.info('Saving best model to wandb.')
+            artifact = wandb.Artifact(
+                name=f'{wandb.run.name}_best_lens',
+                type='model',
+                metadata={'epoch': epoch,
+                          'epoch_step': epoch_step,
+                          'global_step': global_step,
+                          'metrics': metrics})
+            artifact.add_file(checkpoint_path.as_posix())
+            wandb.log_artifact(artifact, aliases=['best', 'latest'])
