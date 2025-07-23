@@ -12,6 +12,8 @@ data/**/*.train
 data/**/*.cha
 data/raw/
 data/prep
+data/*.txt
+data/*.csv
 
 # Outputs
 outputs/

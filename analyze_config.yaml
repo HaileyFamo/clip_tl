@@ -1,0 +1,32 @@
+# clip_tl/analyze_config.yaml
+
+# Analysis script configuration
+
+model:
+  # hf model name
+  name: 'hf-hub:laion/CLIP-ViT-B-32-DataComp.XL-s13B-b90K'
+
+lens:
+  # Path to the trained Tuned Lens checkpoint, relative to project root.
+  # Please update this path to your actual checkpoint file.
+  checkpoint: '/nfs/turbo/coe-chaijy/janeding/regrounding/clip_tl/outputs/5_percent_no_wandb/checkpoints/best_model.pth'
+
+analysis:
+  # Image for analysis, relative to project root
+  image_path: '/nfs/turbo/coe-chaijy/janeding/regrounding/flask.png'
+  target_label: 'chemistry'
+  # Layer to analyze. e.g. 10 for the 11th layer (0-indexed).
+  # The last layer is not translated by the lens.
+  target_layer_idx: 10
+  top_k: 5
+
+device: 'auto'  # "cuda", "cpu", "auto"
+
+output:
+  # Analysis results root directory, relative to project root
+  base_dir: 'outputs/analysis_results'
+  # If left empty, a timestamp will be automatically generated
+  experiment_name: 'chemistry_analysis'
+
+logging:
+  level: 'INFO' 

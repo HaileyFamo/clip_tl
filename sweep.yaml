@@ -1,0 +1,33 @@
+# sweep.yaml
+
+program: src/main.py
+method: bayes  # bayes, grid, random
+metric:
+  name: val/avg_loss
+  goal: minimize
+parameters:
+  optimizer:
+    name:
+      values: ["AdamW", "Adam", "SGD"]
+    lr:
+      distribution: log_uniform_values
+      min: 1e-5
+      max: 1e-3
+    weight_decay:
+      distribution: log_uniform_values
+      min: 1e-5
+      max: 1e-2
+    beta1:
+      values: [0.9, 0.95]
+    beta2:
+      values: [0.99, 0.999]
+    momentum:
+      values: [0.9, 0.95]
+  training:
+    num_epochs:
+      values: [10, 20]
+    validate_every_n_steps:
+      values: [100, 200, 300]
+  data:
+    batch_size:
+      values: [64, 128, 256]

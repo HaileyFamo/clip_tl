@@ -2,7 +2,7 @@ import copy
 import torch
 import open_clip
 import logging
-import model_surgery
+import src.model_surgery as model_surgery
 from pathlib import Path
 from typing import Union, Callable, Literal, Optional, Any, Tuple
 from torch.utils.data import DataLoader, random_split
@@ -12,7 +12,7 @@ from torchvision.datasets import ImageFolder
 logger = logging.getLogger(__name__)
 
 
-OptmizerChoice = Literal["Adam", "SGD"]
+OptmizerChoice = Literal["Adam", "AdamW", "SGD"]
 
 
 class CLIPModel:
@@ -45,6 +45,7 @@ class CLIPModel:
         self.model: Optional[Any] = None
         self.preprocess: Optional[Any] = None
         self.config: Optional[dict] = None
+        self.tokenizer: Optional[open_clip.tokenizer.SimpleTokenizer] = None
 
     def load(self):
         """Load open-clip model and extract configuration.
@@ -110,15 +111,22 @@ class CLIPModel:
         """Get model config."""
         if self.config is None:
             self.load()  # auto load
-        assert self.config is not None, "Config should be loaded"
+        assert self.config is not None, "Config not loaded."
         return self.config
 
     def get_model(self) -> model_surgery.Model:
         """Get the loaded model."""
         if self.model is None:
             self.load()  # auto load
-        assert self.model is not None, "Model should be loaded"
+        assert self.model is not None, "Model not loaded."
         return self.model
+
+    def get_tokenizer(self) -> open_clip.tokenizer.SimpleTokenizer:
+        """Get the tokenizer."""
+        if self.tokenizer is None:
+            self.tokenizer = open_clip.get_tokenizer(self.model_name)
+        assert self.tokenizer is not None, "Tokenzier not loaded."
+        return self.tokenizer
 
 
 class ImageData:
@@ -202,6 +210,8 @@ class Optimizer:
 
     def __init__(self,
                  lr: float = 1e-3,
+                 beta1: float = 0.9,
+                 beta2: float = 0.999,
                  weight_decay: float = 1e-3,
                  momentum: float = 0.9,
                  optimizer: OptmizerChoice = "Adam"):
@@ -214,6 +224,8 @@ class Optimizer:
             optimizer: The optimizer type to use.
         """
         self.lr = lr
+        self.beta1 = beta1
+        self.beta2 = beta2
         self.weight_decay = weight_decay
         self.momentum = momentum
         self.optimizer = optimizer
@@ -231,7 +243,12 @@ class Optimizer:
 
         if self.optimizer == "Adam":
             return torch.optim.Adam(params, lr=self.lr,
+                                    betas=(self.beta1, self.beta2),
                                     weight_decay=self.weight_decay)
+        elif self.optimizer == "AdamW":
+            return torch.optim.AdamW(params, lr=self.lr,
+                                     betas=(self.beta1, self.beta2),
+                                     weight_decay=self.weight_decay)
         elif self.optimizer == "SGD":
             return torch.optim.SGD(params, lr=self.lr,
                                    momentum=self.momentum,
@@ -246,6 +263,8 @@ class Optimizer:
 class Unembed(torch.nn.Module):
     """Module that maps visual transformer hidden states to logits in the text
     space.
+
+    This class is included in the tuned lens and frozen during training.
 
     Args:
         final_norm: The final normalization layer.
@@ -276,6 +295,16 @@ class Unembed(torch.nn.Module):
     def from_pretrained(cls, path: Union[str, Path]) -> None:
         """Load the unembed from a directory"""
         pass
+
+    def project_feature(self, feature_vector: torch.Tensor) -> torch.Tensor:
+        """Project a feature's vector into the text space.
+
+        Returns:
+            The projected feature vector. Will not modify the input tensor.
+        """
+        feature_vector = self.final_norm(feature_vector.clone())
+        feature_vector = self.projection(feature_vector)
+        return feature_vector
 
     def forward(self, h: torch.Tensor) -> torch.Tensor:
         """Convert hidden states into image embeddings (not vocabulary

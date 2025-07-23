@@ -6,8 +6,8 @@ from tqdm import tqdm
 
 SOURCE_TRAIN_DIR = '/scratch/chaijy_root/chaijy2/janeding/imagenet/train'
 SUBSET_DIR = ('/scratch/chaijy_root/chaijy2/janeding/imagenet/'
-              'imagenet_train_subset_5_percent')
-SAMPLE_RATIO = 0.05
+              'imagenet_train_subset_10_percent')
+SAMPLE_RATIO = 0.1
 RANDOM_SEED = 42
 
 
