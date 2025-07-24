@@ -1,9 +1,9 @@
 """Tools for taking components from the CLIP model"""
 
-import torch
-import open_clip
 import logging
 
+import open_clip
+import torch
 
 logger = logging.getLogger(__name__)
 
@@ -27,8 +27,9 @@ def get_unembed_matrix(model: Model) -> torch.nn.Linear:
     if hasattr(model, "token_embedding") and model.token_embedding is not None:
         unembed_matrix = model.token_embedding.weight.T  # shape: (512, 49408)
         # pytorch linear layer expects weight shape (out_features, in_features)
-        unembed_layer = torch.nn.Linear(unembed_matrix.T.shape[0],
-                                        unembed_matrix.T.shape[1], bias=False)
+        unembed_layer = torch.nn.Linear(
+            unembed_matrix.T.shape[0], unembed_matrix.T.shape[1], bias=False
+        )
         unembed_layer.weight.data = unembed_matrix.T.clone().detach()
         return unembed_layer
     else:
@@ -40,12 +41,16 @@ def get_projection_matrix(model: Model) -> torch.nn.Linear:
 
     if not isinstance(model, Model):
         raise ValueError("Model is not a open_clip.CLIP model")
-    logger.info("Getting projection matrix from CLIP model, shape: %s",
-                model.visual.proj.T.shape)  # type: ignore
+    logger.info(
+        "Getting projection matrix from CLIP model, shape: %s",
+        model.visual.proj.T.shape,
+    )  # type: ignore
 
-    if (hasattr(model, "visual") and
-            hasattr(model.visual, "proj") and
-            model.visual.proj is not None):
+    if (
+        hasattr(model, "visual")
+        and hasattr(model.visual, "proj")
+        and model.visual.proj is not None
+    ):
         # add a linear layer to wrap the projection matrix
         d_model = model.visual.proj.T.shape[0]
         d_out = model.visual.proj.T.shape[1]

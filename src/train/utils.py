@@ -1,16 +1,12 @@
-import ast
 import logging
-from pathlib import Path
-import random
-from typing import Union, List, Dict, Any, Tuple
-import pandas as pd
-import matplotlib.pyplot as plt
-from matplotlib.figure import Figure
 import sys
+from pathlib import Path
+from typing import Any, Dict, List, Tuple, Union
+
+import matplotlib.pyplot as plt
+import pandas as pd
 import yaml
-from huggingface_hub import hf_hub_download
-from vit_prisma.sae import SparseAutoencoder
-from src.constants import TC_NAMES
+from matplotlib.figure import Figure
 
 
 def setup_logging(log_level: str = "INFO",
@@ -28,7 +24,7 @@ def setup_logging(log_level: str = "INFO",
 
 def load_config(config_path: str) -> dict:
     """Load configuration from a YAML file."""
-    with open(config_path, 'r') as f:
+    with open(config_path) as f:
         config = yaml.safe_load(f)
     return config
 
@@ -140,70 +136,3 @@ def plot_training_history(
     logging.info(f"Average loss plot saved to {avg_loss_path}")
 
     return fig_step, fig_avg
-
-
-def load_transcoder(repo_id, file_name="weights.pt", config_name="config.json") -> SparseAutoencoder:
-    transcoder_path = hf_hub_download(repo_id, file_name, cache_dir=LOCAL_DIR)
-    hf_hub_download(repo_id, config_name, cache_dir=LOCAL_DIR)
-
-    logging.info(f"Loading SAE from {transcoder_path}")
-    transcoder = SparseAutoencoder.load_from_pretrained(transcoder_path) 
-    # This now automatically gets config.json and converts into the
-    # VisionSAERunnerConfig object
-    return transcoder
-
-
-def load_all_tc(tc_names=TC_NAMES, file_name="weights.pt", config_name="config.json") -> List:
-    tc_list = []
-    for tc_name in tc_names:
-        tc = load_sae(tc_name, file_name, config_name)
-        tc_list.append(tc)
-    return tc_list
-
-
-def load_labels_txt(file_path: str = 'imagenet-1000.txt') -> List:
-    """Load imagenet 1000 labels and return a list of labels."""
-    with open(file_path, 'r', encoding='utf-8') as f:
-        content = f.read()
-    # parse dict
-    labels_dict = ast.literal_eval(content)
-    # convert to list, sorted by index
-    labels_list = [labels_dict[i] for i in range(len(labels_dict))]
-
-    return labels_list
-
-
-def load_words_from_txt(file_path: str) -> List:
-    """Return a list of words from a txt file."""
-    with open(file_path, 'r', encoding='utf-8') as f:
-        words = [line.strip() for line in f]
-
-    return words
-
-
-def load_labels_csv(file_path: str = 'concreteness_rating.csv') -> List:
-    """Load concreteness rating labels and return a list of labels."""
-    df = pd.read_csv(file_path)
-    labels = df['Word'].tolist()
-    labels = [str(label) for label in labels if pd.notna(label) and str(label).strip()]
-    return labels
-
-
-def load_labels(file_path: str = 'concreteness_rating.csv', num_labels: int = -1) -> List:
-    """Load labels from a file and return a list of labels."""
-    if '20k' in file_path:
-        labels = load_words_from_txt(file_path)
-    elif file_path.endswith('.txt'):
-        labels = load_labels_txt(file_path)
-    elif file_path.endswith('.csv'):
-        labels = load_labels_csv(file_path)
-    else:
-        raise ValueError(f"Unsupported file type: {file_path}")
-    
-    if num_labels > 0:
-        labels = random.sample(labels, num_labels)
-    # add extra labels
-    # labels.extend(EXTRA_LABELS)
-    labels = list(set(labels))
-    return labels
-    

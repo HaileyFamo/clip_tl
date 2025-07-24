@@ -2,42 +2,38 @@ EXTRA_LABELS = [
     # Level 5: 最终的抽象概念 (The ultimate abstract concept)
     'scientist',
     'biochemist',
-    "chemistry",
-    "science",
-    "research",
-    "experiment",
-    "laboratory",
-
+    'chemistry',
+    'science',
+    'research',
+    'experiment',
+    'laboratory',
     # Level 4: 场景, 功能, 或相关对象 (Scene, function, or related objects)
-    "liquid",
-    "solution",
-    "chemical",
-    "measurement",
-    "titration",
-    
+    'liquid',
+    'solution',
+    'chemical',
+    'measurement',
+    'titration',
     # Level 3: 图片中的核心对象 (The core object in the image)
-    "flask",
-    "beaker",
-    "test tube",
-    "glassware",
-    "petri dish",
-    "microscope",
-    
+    'flask',
+    'beaker',
+    'test tube',
+    'glassware',
+    'petri dish',
+    'microscope',
     # Level 2: 对象的部件或材质 (Parts or materials of the object)
-    "glass",
-    "neck",
-    "base",
-    "opening",
-    "meniscus", # 液体弯月面，一个非常具体的化学相关特征
-
+    'glass',
+    'neck',
+    'base',
+    'opening',
+    'meniscus',  # 液体弯月面，一个非常具体的化学相关特征
     # Level 1: 底层视觉特征 (Low-level visual features)
-    "blue",
-    "transparent",
-    "clear",
-    "conical shape", # 锥形
-    "circular shape", # 圆形
-    "reflection", # 反光
-    "shadow" # 阴影
+    'blue',
+    'transparent',
+    'clear',
+    'conical shape',  # 锥形
+    'circular shape',  # 圆形
+    'reflection',  # 反光
+    'shadow',  # 阴影
 ]
 
 

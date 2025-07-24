@@ -5,11 +5,16 @@
 import argparse
 import logging
 import shutil
-from pathlib import Path
 from datetime import datetime
-from src.train_clip_tl import Train
-from src.utils import setup_logging, load_config, resolve_path_from_config
+from pathlib import Path
+
 import wandb
+from src.train.train_clip_tl import Train
+from src.train.utils import (
+    load_config,
+    resolve_path_from_config,
+    setup_logging,
+)
 
 
 def main(project_root: Path):

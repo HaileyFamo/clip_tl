@@ -1,13 +1,14 @@
 import copy
-import torch
-import open_clip
 import logging
-import src.model_surgery as model_surgery
 from pathlib import Path
-from typing import Union, Callable, Literal, Optional, Any, Tuple
+from typing import Any, Callable, Literal, Optional, Union
+
+import open_clip
+import torch
 from torch.utils.data import DataLoader, random_split
 from torchvision.datasets import ImageFolder
 
+from src.tuned_lens import model_surgery
 
 logger = logging.getLogger(__name__)
 
@@ -24,12 +25,12 @@ class CLIPModel:
     """
 
     def __init__(
-            self,
-            model_name: str = (
-                "open-clip:laion/CLIP-ViT-B-32-DataComp."
-                "XL-s13B-b90K"
-            ),
-            device: str = "cuda" if torch.cuda.is_available() else "cpu"):
+        self,
+        model_name: str = (
+            "open-clip:laion/CLIP-ViT-B-32-DataComp.XL-s13B-b90K"
+        ),
+        device: str = "cuda" if torch.cuda.is_available() else "cpu",
+    ):
         """Initialize CLIPModel with configuration parameters.
 
         Args:
@@ -42,10 +43,10 @@ class CLIPModel:
         self.device = device
 
         # Will be set after load()
-        self.model: Optional[Any] = None
-        self.preprocess: Optional[Any] = None
+        self.model: Optional[open_clip.model.CLIP] = None
+        self.preprocess: Optional[Callable] = None
         self.config: Optional[dict] = None
-        self.tokenizer: Optional[open_clip.tokenizer.SimpleTokenizer] = None
+        self.tokenizer: Optional[Any] = None
 
     def load(self):
         """Load open-clip model and extract configuration.
@@ -56,8 +57,9 @@ class CLIPModel:
 
         if self.model is None:
             # load model
-            self.model, _, self.preprocess = \
+            self.model, _, self.preprocess = (
                 open_clip.create_model_and_transforms(self.model_name)
+            )
 
             self.model = self.model.to(self.device)
             self.model.eval()  # type: ignore
@@ -78,13 +80,14 @@ class CLIPModel:
         visual = self.model.visual
 
         # get hidden_size
-        import torch.nn as nn
         d_model = None
-        if hasattr(visual, 'ln_pre') and \
-                isinstance(visual.ln_pre, nn.LayerNorm):
+        if hasattr(visual, "ln_pre") and isinstance(
+            visual.ln_pre, torch.nn.LayerNorm
+        ):
             d_model = int(visual.ln_pre.normalized_shape[0])
-        elif hasattr(visual, 'conv1') and \
-                isinstance(visual.conv1, nn.Conv2d):
+        elif hasattr(visual, "conv1") and isinstance(
+            visual.conv1, torch.nn.Conv2d
+        ):
             d_model = int(visual.conv1.out_channels)
 
         if d_model is None:
@@ -92,19 +95,21 @@ class CLIPModel:
 
         # get number of layers
         num_hidden_layers = None
-        if hasattr(visual, 'transformer') and \
-                hasattr(visual.transformer, 'resblocks'):
+        if hasattr(visual, "transformer") and hasattr(
+            visual.transformer, "resblocks"
+        ):
             num_hidden_layers = len(visual.transformer.resblocks)
 
         if num_hidden_layers is None:
-            raise ValueError("Cannot determine number of layers from model "
-                             "structure")
+            raise ValueError(
+                "Cannot determine number of layers from model structure"
+            )
 
         return {
-            'base_model_name_or_path': self.model_name,
-            'd_model': d_model,
-            'num_hidden_layers': num_hidden_layers,
-            'dtype': torch.float32
+            "base_model_name_or_path": self.model_name,
+            "d_model": d_model,
+            "num_hidden_layers": num_hidden_layers,
+            "dtype": torch.float32,
         }
 
     def get_config(self) -> dict:
@@ -132,12 +137,14 @@ class CLIPModel:
 class ImageData:
     """Image data configuration, default is ImageNet."""
 
-    def __init__(self,
-                 data_path: str = "./data/images",
-                 batch_size: int = 64,
-                 image_size: int = 224,
-                 num_workers: int = 8,
-                 validation_split: float = 0.0):
+    def __init__(
+        self,
+        data_path: str = "./data/images",
+        batch_size: int = 64,
+        image_size: int = 224,
+        num_workers: int = 8,
+        validation_split: float = 0.0,
+    ):
         """Initialize ImageData configuration.
 
         Args:
@@ -153,23 +160,22 @@ class ImageData:
         self.num_workers = num_workers
         self.validation_split = validation_split
 
-    def load(self, preprocess: Callable) -> \
-            Tuple[DataLoader, Optional[DataLoader]]:
+    def load(
+        self, preprocess: Callable
+    ) -> tuple[DataLoader, Optional[DataLoader]]:
         """Load image data and split into training and validation sets."""
-        dataset = ImageFolder(
-            self.data_path,
-            transform=preprocess
-        )
+        dataset = ImageFolder(self.data_path, transform=preprocess)
 
         if self.validation_split <= 0 or self.validation_split >= 1:
             train_loader = DataLoader(
                 dataset,
                 batch_size=self.batch_size,
                 shuffle=True,
-                num_workers=self.num_workers
+                num_workers=self.num_workers,
             )
-            logger.info("No validation set, using %d images for training",
-                        len(dataset))
+            logger.info(
+                "No validation set, using %d images for training", len(dataset)
+            )
             return train_loader, None
 
         # Split dataset into training and validation
@@ -187,20 +193,20 @@ class ImageData:
         train_dataset, val_dataset = random_split(
             dataset,
             [num_train, num_val],
-            generator=torch.Generator().manual_seed(42)
+            generator=torch.Generator().manual_seed(42),
         )
 
         train_loader = DataLoader(
             train_dataset,
             batch_size=self.batch_size,
             shuffle=True,
-            num_workers=self.num_workers
+            num_workers=self.num_workers,
         )
         val_loader = DataLoader(
             val_dataset,
             batch_size=self.batch_size,
             shuffle=False,  # No need to shuffle validation data
-            num_workers=self.num_workers
+            num_workers=self.num_workers,
         )
         return train_loader, val_loader
 
@@ -208,13 +214,15 @@ class ImageData:
 class Optimizer:
     """Optimizer configuration."""
 
-    def __init__(self,
-                 lr: float = 1e-3,
-                 beta1: float = 0.9,
-                 beta2: float = 0.999,
-                 weight_decay: float = 1e-3,
-                 momentum: float = 0.9,
-                 optimizer: OptmizerChoice = "Adam"):
+    def __init__(
+        self,
+        lr: float = 1e-3,
+        beta1: float = 0.9,
+        beta2: float = 0.999,
+        weight_decay: float = 1e-3,
+        momentum: float = 0.9,
+        optimizer: OptmizerChoice = "Adam",
+    ):
         """Initialize optimizer configuration.
 
         Args:
@@ -230,8 +238,9 @@ class Optimizer:
         self.momentum = momentum
         self.optimizer = optimizer
 
-    def create_optim(self, params: list[torch.nn.Parameter]) -> \
-            torch.optim.Optimizer:
+    def create_optim(
+        self, params: list[torch.nn.Parameter]
+    ) -> torch.optim.Optimizer:
         """Create the optimizer.
 
         Args:
@@ -242,17 +251,26 @@ class Optimizer:
         """
 
         if self.optimizer == "Adam":
-            return torch.optim.Adam(params, lr=self.lr,
-                                    betas=(self.beta1, self.beta2),
-                                    weight_decay=self.weight_decay)
+            return torch.optim.Adam(
+                params,
+                lr=self.lr,
+                betas=(self.beta1, self.beta2),
+                weight_decay=self.weight_decay,
+            )
         elif self.optimizer == "AdamW":
-            return torch.optim.AdamW(params, lr=self.lr,
-                                     betas=(self.beta1, self.beta2),
-                                     weight_decay=self.weight_decay)
+            return torch.optim.AdamW(
+                params,
+                lr=self.lr,
+                betas=(self.beta1, self.beta2),
+                weight_decay=self.weight_decay,
+            )
         elif self.optimizer == "SGD":
-            return torch.optim.SGD(params, lr=self.lr,
-                                   momentum=self.momentum,
-                                   weight_decay=self.weight_decay)
+            return torch.optim.SGD(
+                params,
+                lr=self.lr,
+                momentum=self.momentum,
+                weight_decay=self.weight_decay,
+            )
         else:
             raise ValueError(f"Unknown optimizer '{self.optimizer}'")
 

@@ -2,17 +2,19 @@
 
 import json
 import logging
-from typing import Optional, Union, Callable, Tuple
-import torch
-import torch.nn.functional as F
-import wandb
 from datetime import datetime
 from pathlib import Path
-from tqdm import tqdm
+from typing import Callable, Optional, Tuple, Union
+
+import torch
+import torch.nn.functional as F
 from torch.utils.data import DataLoader
-from src.clip_tl import CLIPTunedLens, get_clip_hidden_states
-from src.ingredients import CLIPModel, ImageData, Optimizer
-from src.utils import plot_training_history, resolve_path_from_config
+from tqdm import tqdm
+
+import wandb
+from src.train.utils import plot_training_history, resolve_path_from_config
+from src.tuned_lens.clip_tl import CLIPTunedLens, get_clip_hidden_states
+from src.tuned_lens.ingredients import CLIPModel, ImageData, Optimizer
 
 logger = logging.getLogger(__name__)
 
@@ -156,9 +158,11 @@ class Train:
                          total_training_steps: int
                          ) -> Union[torch.optim.lr_scheduler.StepLR,
                                     torch.optim.lr_scheduler.CosineAnnealingLR,
+                                    torch.optim.lr_scheduler.SequentialLR,
                                     None]:
         scheduler_cfg = self.config.get('scheduler', {})
         scheduler_name = scheduler_cfg.get('name')
+        use_warmup = scheduler_cfg.get('warmup', {}).get('enabled', False)
 
         if not scheduler_name:
             logger.info('No learning rate scheduler used.')
@@ -174,12 +178,41 @@ class Train:
         elif scheduler_name == 'CosineAnnealingLR':
             logger.info(f'Using CosineAnnealingLR scheduler with T_max = '
                         f'{total_training_steps}.')
+            t_max = total_training_steps
+
+            if use_warmup:
+                t_max -= scheduler_cfg.get('warmup', {}).get('steps', 500)
+                if t_max <= 0:
+                    raise ValueError('T_max must be greater than 0.')
+                logger.info(f'Using warmup with {scheduler_cfg.get(
+                    "warmup", {}).get("steps", 500)} steps.')
+
+            logger.info(f'Using CosineAnnealingLR scheduler with T_max = '
+                        f'{t_max}.')
             scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
                 optimizer,
-                T_max=scheduler_cfg.get('T_max', total_training_steps)
+                T_max=t_max
             )
         else:
             logger.info('No learning rate scheduler used.')
+
+        # --- combine warmup and cosine annealing ---
+        if use_warmup:
+            warmup_steps = scheduler_cfg.get('warmup', {}).get('steps', 500)
+            warmup_start_factor = scheduler_cfg.get('warmup', {}).get(
+                'start_factor', 0.001)
+            warmup_scheduler = torch.optim.lr_scheduler.LinearLR(
+                optimizer,
+                start_factor=warmup_start_factor,
+                end_factor=1.0,
+                total_iters=warmup_steps
+            )
+            scheduler = torch.optim.lr_scheduler.SequentialLR(
+                optimizer,
+                schedulers=[warmup_scheduler, scheduler],
+                milestones=[warmup_steps]
+            )
+
         return scheduler
 
     def _load_from_checkpoint(self):
@@ -396,10 +429,10 @@ class Train:
         )
 
         if self.use_wandb:
-            wandb.log({
-                "charts/step_loss": wandb.Plotly(fig_step),
-                "charts/avg_loss_lr": wandb.Plotly(fig_avg),
-            })
+            # wandb.log({
+            #     "charts/step_loss": wandb.Plotly(fig_step),
+            #     "charts/avg_loss_lr": wandb.Plotly(fig_avg),
+            # })
             wandb.finish()
 
         logger.info(f'Training finished after {self.num_epochs} epochs.')
@@ -497,15 +530,15 @@ class Train:
         }, checkpoint_path)
         logger.info(f'Checkpoint saved to {checkpoint_path.as_posix()}.')
 
-        # --- Save best model to wandb ---
-        if self.use_wandb and wandb.run and is_best:
-            logger.info('Saving best model to wandb.')
-            artifact = wandb.Artifact(
-                name=f'{wandb.run.name}_best_lens',
-                type='model',
-                metadata={'epoch': epoch,
-                          'epoch_step': epoch_step,
-                          'global_step': global_step,
-                          'metrics': metrics})
-            artifact.add_file(checkpoint_path.as_posix())
-            wandb.log_artifact(artifact, aliases=['best', 'latest'])
+        # # --- Save best model to wandb ---
+        # if self.use_wandb and wandb.run and is_best:
+        #     logger.info('Saving best model to wandb.')
+        #     artifact = wandb.Artifact(
+        #         name=f'{wandb.run.name}_best_lens',
+        #         type='model',
+        #         metadata={'epoch': epoch,
+        #                   'epoch_step': epoch_step,
+        #                   'global_step': global_step,
+        #                   'metrics': metrics})
+        #     artifact.add_file(checkpoint_path.as_posix())
+        #     wandb.log_artifact(artifact, aliases=['best', 'latest'])

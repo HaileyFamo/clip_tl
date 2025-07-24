@@ -12,3 +12,5 @@ TC_NAMES = [
     'Prisma-Multimodal/CLIP-transcoder-topk-1024-x64-all_patches_9-mlp-98',
     'Prisma-Multimodal/CLIP-transcoder-topk-1024-x64-all_patches_10-mlp-97'
     ]
+
+LOCAL_DIR = "/nfs/turbo/coe-chaijy-unreplicated/pre-trained-weights/prisma-sae"
