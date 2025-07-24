@@ -1,6 +1,8 @@
 # run.py
 from pathlib import Path
-from src.main import main
+
+from src.train.main import main
+
 # from src.analyze_lens import main
 
 if __name__ == "__main__":

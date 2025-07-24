@@ -7,6 +7,7 @@ import open_clip
 import torch
 from torch.utils.data import DataLoader, random_split
 from torchvision.datasets import ImageFolder
+from torchvision.transforms import Compose
 
 from src.tuned_lens import model_surgery
 
@@ -44,11 +45,11 @@ class CLIPModel:
 
         # Will be set after load()
         self.model: Optional[open_clip.model.CLIP] = None
-        self.preprocess: Optional[Callable] = None
+        self.preprocess: Optional[Compose] = None
         self.config: Optional[dict] = None
         self.tokenizer: Optional[Any] = None
 
-    def load(self):
+    def load(self) -> tuple[open_clip.model.CLIP, Compose]:
         """Load open-clip model and extract configuration.
 
         Returns:
