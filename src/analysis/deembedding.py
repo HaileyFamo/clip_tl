@@ -6,8 +6,8 @@ from src.analysis.components import FeatureVector
 from src.tuned_lens.clip_tl import CLIPTunedLens
 
 # print colors
-YELLOW = "\033[93m"  # yellow
-RESET = "\033[0m"  # reset color
+YELLOW = '\033[93m'  # yellow
+RESET = '\033[0m'  # reset color
 
 
 def get_labels_for_feature_vector(
@@ -39,8 +39,8 @@ def get_labels_for_feature_vector(
     if print_top_k:
         for i in range(k):
             print(
-                f"{i + 1}. label: {top_k_words[i]:<20} | "
-                f"prob: {top_k_scores[i].item():.4f}"
+                f'{i + 1}. label: {top_k_words[i]:<20} | '
+                f'prob: {top_k_scores[i].item():.4f}'
             )
     if k == 1:
         return top_k_words[0], top_k_scores[0].item()
@@ -50,7 +50,7 @@ def get_labels_for_feature_vector(
 
 def get_deembeddings_for_path(
     text_embeddings: torch.Tensor,
-    labels: list[str],
+    label_dict: dict,
     path: list[FeatureVector],
     lens: Optional[CLIPTunedLens] = None,
     print_path: bool = False,
@@ -69,16 +69,23 @@ def get_deembeddings_for_path(
             feature_str = str(feature)
 
         words, score = get_labels_for_feature_vector(
-            text_embeddings, labels, feature, lens, k=1
+            text_embeddings, list(label_dict.keys()), feature, lens, k=1
         )
         # use yellow to highlight word
         if isinstance(words, str):
-            highlighted_deembedding = f"{YELLOW}{words}{RESET}"
+            highlighted_deembedding = f'{YELLOW}{words}{RESET}'
         else:
-            highlighted_deembedding = f'{YELLOW}{", ".join(words)}{RESET}'
-        result_parts.append(f"{feature_str}({highlighted_deembedding})")
+            mean_img = 0.0
+            mean_conc = 0.0
+            for word in words:
+                mean_img += label_dict[word]['imageability']
+                mean_conc += label_dict[word]['concreteness']
+            mean_img /= len(words)
+            mean_conc /= len(words)
+            highlighted_deembedding = f'{YELLOW}mean imageability: {mean_img:.3f}, mean concreteness: {mean_conc:.3f}{RESET}'
+        result_parts.append(f'{feature_str}({highlighted_deembedding})')
 
-    results = " ← ".join(result_parts)
+    results = ' ← '.join(result_parts)
     if print_path:
         print(results)
 
@@ -120,6 +127,6 @@ def print_deembeddings_for_all_paths(
         text_embeddings, labels, paths, lens
     )
     if results:
-        print(f"--- Paths of size {len(paths[0])} ---")
+        print(f'--- Paths of size {len(paths[0])} ---')
         for result in results:
             print(result)

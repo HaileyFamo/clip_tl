@@ -74,10 +74,10 @@ class TunedLensConfig:
         """Convert this config to a dictionary."""
         config_dict = asdict(self)
         # Convert torch.dtype to string for JSON serialization
-        if "dtype" in config_dict and isinstance(
-            config_dict["dtype"], torch.dtype
+        if 'dtype' in config_dict and isinstance(
+            config_dict['dtype'], torch.dtype
         ):
-            config_dict["dtype"] = str(config_dict["dtype"])
+            config_dict['dtype'] = str(config_dict['dtype'])
         return config_dict
 
     @classmethod
@@ -91,18 +91,18 @@ class TunedLensConfig:
             del config_dict[key]
 
         # Convert string back to torch.dtype
-        if "dtype" in config_dict and isinstance(config_dict["dtype"], str):
+        if 'dtype' in config_dict and isinstance(config_dict['dtype'], str):
             try:
                 # e.g., "torch.float32" -> torch.float32
-                config_dict["dtype"] = getattr(
-                    torch, config_dict["dtype"].split(".")[-1]
+                config_dict['dtype'] = getattr(
+                    torch, config_dict['dtype'].split('.')[-1]
                 )
             except AttributeError:
                 logger.warning(
                     f"Could not convert '{config_dict['dtype']}' to a "
-                    f"torch.dtype. Ignoring."
+                    f'torch.dtype. Ignoring.'
                 )
-                del config_dict["dtype"]
+                del config_dict['dtype']
         return cls(**config_dict)
 
 
@@ -157,7 +157,7 @@ class CLIPTunedLens(Lens):
     @classmethod
     def from_clip_model(
         cls, clip_model: CLIPModel, bias: bool = True
-    ) -> "CLIPTunedLens":
+    ) -> 'CLIPTunedLens':
         """Create a lens from a CLIPModel instance.
 
         Args:
@@ -169,19 +169,19 @@ class CLIPTunedLens(Lens):
 
         # create TunedLensConfig
         config = TunedLensConfig(
-            base_model_name_or_path=config_dict["base_model_name_or_path"],
-            d_model=config_dict["d_model"],
-            num_hidden_layers=config_dict["num_hidden_layers"],
-            dtype=config_dict.get("dtype", torch.float32),
+            base_model_name_or_path=config_dict['base_model_name_or_path'],
+            d_model=config_dict['d_model'],
+            num_hidden_layers=config_dict['num_hidden_layers'],
+            dtype=config_dict.get('dtype', torch.float32),
             bias=bias,
         )
-        # create unembed (using actual model)
+
         unembed = Unembed(actual_model)
 
         return cls(config, unembed)
 
     @classmethod
-    def from_model(cls, model, bias: bool = True) -> "CLIPTunedLens":
+    def from_model(cls, model, bias: bool = True) -> 'CLIPTunedLens':
         """Create a lens from a raw model (deprecated, use from_clip_model
         instead)."""
         # for backward compatibility
@@ -190,16 +190,16 @@ class CLIPTunedLens(Lens):
     @classmethod
     def from_checkpoint(
         cls, checkpoint_path: Union[str, Path], clip_model: CLIPModel
-    ) -> "CLIPTunedLens":
+    ) -> 'CLIPTunedLens':
         """Create a lens from a checkpoint."""
 
-        logger.info(f"Loading lens from checkpoint: {checkpoint_path}")
+        logger.info(f'Loading lens from checkpoint: {checkpoint_path}')
         lens = cls.from_clip_model(clip_model)
         checkpoint = torch.load(checkpoint_path, map_location=clip_model.device)
-        assert (
-            "lens_state_dict" in checkpoint
-        ), "Checkpoint does not contain lens state dict"
-        lens.load_state_dict(checkpoint["lens_state_dict"])
+        assert 'lens_state_dict' in checkpoint, (
+            'Checkpoint does not contain lens state dict'
+        )
+        lens.load_state_dict(checkpoint['lens_state_dict'])
         lens.to(clip_model.device)
         lens.eval()
 
@@ -208,11 +208,11 @@ class CLIPTunedLens(Lens):
     @classmethod
     def from_pretrained_model(
         cls, path: Union[str, Path], model: open_clip.model.CLIP
-    ) -> "CLIPTunedLens":
+    ) -> 'CLIPTunedLens':
         """Load the lens from a model directory"""
         path = Path(path)
-        config_path = path / "config.json"
-        params_path = path / "params.pt"
+        config_path = path / 'config.json'
+        params_path = path / 'params.pt'
 
         if not config_path.exists() or not params_path.exists():
             raise FileNotFoundError(
@@ -228,18 +228,18 @@ class CLIPTunedLens(Lens):
         # Create a new lens instance with the loaded config and unembed layer
         lens = cls(config, unembed)
         # Load the translator weights
-        state_dict = torch.load(params_path, map_location="cuda")
+        state_dict = torch.load(params_path, map_location='cuda')
         lens.layer_translators.load_state_dict(state_dict)
         # lens.to(clip_model.device)
         lens.eval()
 
-        logger.info(f"Loaded lens from {path}")
+        logger.info(f'Loaded lens from {path}')
         return lens
 
     @classmethod
     def from_lens_path(
         cls, path: Union[str, Path], clip_model: CLIPModel
-    ) -> "CLIPTunedLens":
+    ) -> 'CLIPTunedLens':
         """Load the lens from a lens directory.
 
         This method assumes that the directory contains 'config.json' and
@@ -253,8 +253,8 @@ class CLIPTunedLens(Lens):
             A CLIPTunedLens instance loaded from the directory.
         """
         path = Path(path)
-        config_path = path / "config.json"
-        params_path = path / "params.pt"
+        config_path = path / 'config.json'
+        params_path = path / 'params.pt'
 
         if not config_path.exists() or not params_path.exists():
             raise FileNotFoundError(
@@ -276,7 +276,7 @@ class CLIPTunedLens(Lens):
         lens.to(clip_model.device)
         lens.eval()
 
-        logger.info(f"Loaded lens from {path}")
+        logger.info(f'Loaded lens from {path}')
         return lens
 
     def transform_hidden(self, h: torch.Tensor, idx: int) -> torch.Tensor:
@@ -299,9 +299,9 @@ class CLIPTunedLens(Lens):
         state_dict = self.layer_translators.state_dict()
 
         # save the parameters
-        torch.save(state_dict, dir / "params.pt")
+        torch.save(state_dict, dir / 'params.pt')
         # save the config
-        with open(dir / "config.json", "w") as f:
+        with open(dir / 'config.json', 'w') as f:
             json.dump(self.config.to_dict(), f, indent=2)
 
 
@@ -351,7 +351,7 @@ def get_clip_hidden_states(
         yield final_output, hidden_states
 
     except Exception as e:
-        logger.error(f"Error getting hidden states: {e}")
+        logger.error(f'Error getting hidden states: {e}')
         raise e
 
     finally:

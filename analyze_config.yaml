@@ -9,16 +9,19 @@ model:
 lens:
   # Path to the trained Tuned Lens checkpoint, relative to project root.
   # Please update this path to your actual checkpoint file.
-  checkpoint: '/nfs/turbo/coe-chaijy/janeding/regrounding/clip_tl/outputs/5_percent_no_wandb/checkpoints/best_model.pth'
+  lens_path: '/nfs/turbo/coe-chaijy/janeding/regrounding/clip_tl/outputs/10_percent_sweep/checkpoints/best_model.pth'
 
 analysis:
   # Image for analysis, relative to project root
   image_path: '/nfs/turbo/coe-chaijy/janeding/regrounding/flask.png'
   target_label: 'chemistry'
+  vocab_path: '/nfs/turbo/coe-chaijy/janeding/regrounding/MyTC_bert/data/concrete_visual_vocabulary.csv'
   # Layer to analyze. e.g. 10 for the 11th layer (0-indexed).
   # The last layer is not translated by the lens.
   target_layer_idx: 10
   top_k: 5
+  num_iters: 10
+  num_branches: 15
 
 device: 'auto'  # "cuda", "cpu", "auto"
 
