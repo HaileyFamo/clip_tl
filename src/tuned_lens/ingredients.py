@@ -14,7 +14,7 @@ from src.tuned_lens import model_surgery
 logger = logging.getLogger(__name__)
 
 
-OptmizerChoice = Literal["Adam", "AdamW", "SGD"]
+OptmizerChoice = Literal['Adam', 'AdamW', 'SGD']
 
 
 class CLIPModel:
@@ -28,9 +28,9 @@ class CLIPModel:
     def __init__(
         self,
         model_name: str = (
-            "open-clip:laion/CLIP-ViT-B-32-DataComp.XL-s13B-b90K"
+            'open-clip:laion/CLIP-ViT-B-32-DataComp.XL-s13B-b90K'
         ),
-        device: str = "cuda" if torch.cuda.is_available() else "cpu",
+        device: str = 'cuda' if torch.cuda.is_available() else 'cpu',
     ):
         """Initialize CLIPModel with configuration parameters.
 
@@ -75,63 +75,67 @@ class CLIPModel:
         """Extract and store config from the loaded model."""
 
         if self.model is None:
-            raise ValueError("Model must be loaded first")
+            raise ValueError('Model must be loaded first')
 
         # use model_surgery to extract config
         visual = self.model.visual
 
         # get hidden_size
         d_model = None
-        if hasattr(visual, "ln_pre") and isinstance(
+        if hasattr(visual, 'ln_pre') and isinstance(
             visual.ln_pre, torch.nn.LayerNorm
         ):
             d_model = int(visual.ln_pre.normalized_shape[0])
-        elif hasattr(visual, "conv1") and isinstance(
+        elif hasattr(visual, 'conv1') and isinstance(
             visual.conv1, torch.nn.Conv2d
         ):
             d_model = int(visual.conv1.out_channels)
 
         if d_model is None:
-            raise ValueError("Cannot determine d_model from model structure")
+            raise ValueError('Cannot determine d_model from model structure')
 
         # get number of layers
         num_hidden_layers = None
-        if hasattr(visual, "transformer") and hasattr(
-            visual.transformer, "resblocks"
+        if hasattr(visual, 'transformer') and hasattr(
+            visual.transformer, 'resblocks'
         ):
             num_hidden_layers = len(visual.transformer.resblocks)
 
         if num_hidden_layers is None:
             raise ValueError(
-                "Cannot determine number of layers from model structure"
+                'Cannot determine number of layers from model structure'
             )
 
+        logger.info(
+            f'Got model config: {self.model_name=} {d_model=} {num_hidden_layers=} {torch.float32=}'
+        )
+
         return {
-            "base_model_name_or_path": self.model_name,
-            "d_model": d_model,
-            "num_hidden_layers": num_hidden_layers,
-            "dtype": torch.float32,
+            'base_model_name_or_path': self.model_name,
+            'd_model': d_model,
+            'num_hidden_layers': num_hidden_layers,
+            'dtype': torch.float32,
         }
 
     def get_config(self) -> dict:
         """Get model config."""
         if self.config is None:
             self.load()  # auto load
-        assert self.config is not None, "Config not loaded."
+        assert self.config is not None, 'Config not loaded.'
         return self.config
 
     def get_model(self) -> model_surgery.Model:
         """Get the loaded model."""
         if self.model is None:
             self.load()  # auto load
-        assert self.model is not None, "Model not loaded."
+        assert self.model is not None, 'Model not loaded.'
         return self.model
 
     def get_tokenizer(self) -> open_clip.tokenizer.SimpleTokenizer:
         """Get the tokenizer."""
         if self.tokenizer is None:
             self.tokenizer = open_clip.get_tokenizer(self.model_name)
-        assert self.tokenizer is not None, "Tokenzier not loaded."
+        assert self.tokenizer is not None, 'Tokenzier not loaded.'
         return self.tokenizer
 
 
@@ -140,7 +144,7 @@ class ImageData:
 
     def __init__(
         self,
-        data_path: str = "./data/images",
+        data_path: str = './data/images',
         batch_size: int = 64,
         image_size: int = 224,
         num_workers: int = 8,
@@ -175,7 +179,7 @@ class ImageData:
                 num_workers=self.num_workers,
             )
             logger.info(
-                "No validation set, using %d images for training", len(dataset)
+                'No validation set, using %d images for training', len(dataset)
             )
             return train_loader, None
 
@@ -187,8 +191,8 @@ class ImageData:
         # Ensure splits are not empty
         if num_train == 0 or num_val == 0:
             raise ValueError(
-                f"Validation split of {self.validation_split} resulted in an "
-                f"empty training or validation set."
+                f'Validation split of {self.validation_split} resulted in an '
+                f'empty training or validation set.'
             )
 
         train_dataset, val_dataset = random_split(
@@ -222,7 +226,7 @@ class Optimizer:
         beta2: float = 0.999,
         weight_decay: float = 1e-3,
         momentum: float = 0.9,
-        optimizer: OptmizerChoice = "Adam",
+        optimizer: OptmizerChoice = 'Adam',
     ):
         """Initialize optimizer configuration.
 
@@ -251,21 +255,21 @@ class Optimizer:
             A torch.optim.Optimizer instance.
         """
 
-        if self.optimizer == "Adam":
+        if self.optimizer == 'Adam':
             return torch.optim.Adam(
                 params,
                 lr=self.lr,
                 betas=(self.beta1, self.beta2),
                 weight_decay=self.weight_decay,
             )
-        elif self.optimizer == "AdamW":
+        elif self.optimizer == 'AdamW':
             return torch.optim.AdamW(
                 params,
                 lr=self.lr,
                 betas=(self.beta1, self.beta2),
                 weight_decay=self.weight_decay,
             )
-        elif self.optimizer == "SGD":
+        elif self.optimizer == 'SGD':
             return torch.optim.SGD(
                 params,
                 lr=self.lr,
@@ -297,7 +301,7 @@ class Unembed(torch.nn.Module):
 
     def __init__(self, model: model_surgery.Model):
         super().__init__()
-        self.model = model
+        self.model = model  # TODO: remove this
         final_norm = model_surgery.get_final_norm(model)
         projection = model_surgery.get_projection_matrix(model)
         unembedding = model_surgery.get_unembed_matrix(model)
@@ -333,7 +337,7 @@ class Unembed(torch.nn.Module):
             # take the [CLS] token
             h = h[:, 0, :]
         else:
-            raise ValueError(f"Hidden state dimension != 3, got {h.dim()}")
+            raise ValueError(f'Hidden state dimension != 3, got {h.dim()}')
 
         # final norm and projection from visual to text space
         h = self.final_norm(h)

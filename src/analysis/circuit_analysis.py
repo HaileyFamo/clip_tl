@@ -1,6 +1,9 @@
 import copy
-from typing import Dict, Optional, Tuple
+import functools
+from typing import Optional
 
+import numpy as np
+import open_clip
 import torch
 from transformer_lens.utils import get_act_name, to_numpy
 from vit_prisma.sae import SparseAutoencoder
@@ -34,15 +37,29 @@ def get_attn_head_contribs(model, cache, layer_idx, range_normal):
     """
     # 1. from cache, get v_acts and pattern
     # v_acts.shape: [batch, seq_len, num_heads, d_head]
-    v_acts = cache[get_act_name("v", layer_idx)]
+    v_acts = cache[get_act_name('v', layer_idx)]
 
     # pattern.shape: [batch, num_heads, dst_pos, src_pos]
-    pattern = cache[get_act_name("pattern", layer_idx)]
+    pattern = cache[get_act_name('pattern', layer_idx)]
 
     # 2. get W_O and reshape for head-wise multiplication
-    attn_block = model.visual.transformer.resblocks[layer_idx].attn
-    n_heads = attn_block.num_heads
-    d_model = attn_block.embed_dim
+    if hasattr(model.visual, 'transformer') and hasattr(
+        model.visual.transformer, 'resblocks'
+    ):
+        attn_block = model.visual.transformer.resblocks[layer_idx].attn
+    else:
+        attn_block = model.visual.blocks[layer_idx].attn
+        print(attn_block)
+    n_heads = (
+        attn_block.num_heads
+        if hasattr(attn_block, 'num_heads')
+        else model.visual.n_heads
+    )
+    d_model = (
+        attn_block.embed_dim
+        if hasattr(attn_block, 'embed_dim')
+        else model.visual.d_model
+    )
     d_head = d_model // n_heads
 
     W_O = attn_block.out_proj.weight.reshape(
@@ -55,7 +72,7 @@ def get_attn_head_contribs(model, cache, layer_idx, range_normal):
     # 'bshf,hfm,b hds,m->bhds'
     # b: batch, s: src_pos, h: head, f: d_head, m: d_model, d: dst_pos
     contribs = torch.einsum(
-        "bshf,hfm,bhds,m->bhds", v_acts, W_O, pattern, range_normal
+        'bshf,hfm,bhds,m->bhds', v_acts, W_O, pattern, range_normal
     )
 
     return contribs
@@ -64,21 +81,21 @@ def get_attn_head_contribs(model, cache, layer_idx, range_normal):
 @torch.no_grad()
 def get_transcoder_ixg(
     transcoder: SparseAutoencoder,
-    cache: Dict[str, torch.Tensor],
+    cache: dict[str, torch.Tensor],
     range_normal: torch.Tensor,
     input_layer: int,
     input_token_idx: int,
     return_numpy: bool = True,
     is_transcoder_post_ln: bool = True,
     return_feature_activs: bool = True,
-) -> Tuple[torch.Tensor, torch.Tensor]:
+) -> tuple[torch.Tensor, torch.Tensor]:
     """Get the pulledback feature for a given transcoder."""
 
     pulledback_feature = transcoder.W_dec @ range_normal
     if is_transcoder_post_ln:
-        act_name = get_act_name("normalized", input_layer, "ln2")
+        act_name = get_act_name('normalized', input_layer, 'ln2')
     else:
-        act_name = get_act_name("resid_mid", input_layer)
+        act_name = get_act_name('resid_mid', input_layer)
 
     feature_activs = transcoder.encode(cache[act_name])[1][0, input_token_idx]
     pulledback_feature = pulledback_feature * feature_activs
@@ -98,7 +115,7 @@ def get_transcoder_ixg(
 @torch.no_grad()
 def get_ln_constant(
     model,
-    cache: Dict[str, torch.Tensor],
+    cache: dict[str, torch.Tensor],
     vector: torch.Tensor,
     layer: int,
     token: int,
@@ -107,13 +124,13 @@ def get_ln_constant(
 ):
     """Get the layernorm constant for a given layer and token."""
     x_act_name = (
-        get_act_name("resid_mid", layer)
+        get_act_name('resid_mid', layer)
         if is_ln2
-        else get_act_name("resid_pre", layer)
+        else get_act_name('resid_pre', layer)
     )
     x = cache[x_act_name][0, token]
 
-    y_act_name = get_act_name("normalized", layer, "ln2" if is_ln2 else "ln1")
+    y_act_name = get_act_name('normalized', layer, 'ln2' if is_ln2 else 'ln1')
     y = cache[y_act_name][0, token]
 
     if torch.dot(vector, x) == 0:
@@ -129,7 +146,7 @@ def get_ln_constant(
 def get_top_transcoder_features(
     model,
     transcoder: SparseAutoencoder,
-    cache: Dict[str, torch.Tensor],
+    cache: dict[str, torch.Tensor],
     feature_vector: FeatureVector,
     layer: int,
     k: int = 5,
@@ -139,23 +156,27 @@ def get_top_transcoder_features(
     my_token = (
         feature_vector.token
         if feature_vector.token >= 0
-        else cache[get_act_name("resid_pre", 0)].shape[1] + feature_vector.token
+        else cache[get_act_name('resid_pre', 0)].shape[1] + feature_vector.token
     )
     is_transcoder_post_ln = (
-        "ln2" in transcoder.cfg.hook_point
-        and "normalized" in transcoder.cfg.hook_point
+        'ln2' in transcoder.cfg.hook_point
+        and 'normalized' in transcoder.cfg.hook_point
     )
 
     # compute error
     if is_transcoder_post_ln:
-        act_name = get_act_name("normalized", layer, "ln2")
+        act_name = get_act_name('normalized', layer, 'ln2')
     else:
-        act_name = get_act_name("resid_mid", layer)
+        act_name = get_act_name('resid_mid', layer)
     transcoder_out = transcoder.encode(cache[act_name])[0][0, my_token]
-    # mlp_out = model.blocks[layer].mlp(cache[act_name])[0, my_token]
-    mlp_out = model.visual.transformer.resblocks[layer].mlp(cache[act_name])[
-        0, my_token
-    ]
+    if hasattr(model.visual, 'blocks'):
+        mlp_out = model.visual.blocks[layer].mlp(cache[act_name])[0, my_token]
+    elif hasattr(model.visual, 'transformer') and hasattr(
+        model.visual.transformer, 'resblocks'
+    ):
+        mlp_out = model.visual.transformer.resblocks[layer].mlp(
+            cache[act_name]
+        )[0, my_token]
 
     error = torch.dot(
         feature_vector.vector, mlp_out - transcoder_out
@@ -195,7 +216,7 @@ def get_top_transcoder_features(
                 component_path=[new_component],
                 vector=vector,
                 layer=layer,
-                sublayer="resid_mid",
+                sublayer='resid_mid',
                 contrib=contrib.item(),
                 contrib_type=ContribType.RAW,
                 error=error,
@@ -227,7 +248,7 @@ def get_top_contribs(
         k: the number of top contributions to return
         ignore_bos: whether to ignore the BOS token
     """
-    if feature_vector.sublayer == "mlp_out":
+    if feature_vector.sublayer == 'mlp_out':
         return get_top_transcoder_features(
             model,
             transcoders[feature_vector.layer],
@@ -243,7 +264,7 @@ def get_top_contribs(
     all_mlp_contribs = []
     # go to all the previous layers
     mlp_max_layer = my_layer + (
-        1 if feature_vector.sublayer == "resid_post" else 0
+        1 if feature_vector.sublayer == 'resid_post' else 0
     )
     for cur_layer in range(mlp_max_layer):
         cur_top_features = get_top_transcoder_features(
@@ -255,8 +276,8 @@ def get_top_contribs(
     all_attn_contribs = []
     attn_max_layer = my_layer + (
         1
-        if feature_vector.sublayer == "resid_post"
-        or feature_vector.sublayer == "resid_mid"
+        if feature_vector.sublayer == 'resid_post'
+        or feature_vector.sublayer == 'resid_mid'
         else 0
     )
     for cur_layer in range(attn_max_layer):
@@ -267,7 +288,7 @@ def get_top_contribs(
         #     attn_contribs = attn_contribs[:, 1:]
 
         if attn_contribs.numel() == 0:
-            print(f"No attn contribs for layer {cur_layer}")
+            print(f'No attn contribs for layer {cur_layer}')
             continue
 
         # here we get the top k attn contribs, they are scalars
@@ -288,9 +309,22 @@ def get_top_contribs(
             top_attn_contribs_flattened, top_attn_contrib_indices
         ):
             # adapted for ViT
-            attn_block = model.visual.transformer.resblocks[cur_layer].attn
-            d_model = attn_block.embed_dim
-            n_heads = attn_block.num_heads
+            if hasattr(model.visual, 'transformer') and hasattr(
+                model.visual.transformer, 'resblocks'
+            ):
+                attn_block = model.visual.transformer.resblocks[cur_layer].attn
+            else:  # for prisma
+                attn_block = model.visual.blocks[cur_layer].attn
+            d_model = (
+                attn_block.embed_dim
+                if hasattr(attn_block, 'embed_dim')
+                else attn_block.d_model
+            )
+            n_heads = (
+                attn_block.num_heads
+                if hasattr(attn_block, 'num_heads')
+                else attn_block.n_heads
+            )
             d_head = d_model // n_heads
             # if ignore_bos:
             #     src_token = src_token + 1
@@ -313,7 +347,7 @@ def get_top_contribs(
 
             # vector = model.OV[cur_layer, head] @ feature_vector.vector
             vector = OV @ feature_vector.vector
-            attn_pattern = cache[get_act_name("pattern", cur_layer)]
+            attn_pattern = cache[get_act_name('pattern', cur_layer)]
             vector = (
                 vector * attn_pattern[0, head, feature_vector.token, src_token]
             )
@@ -322,7 +356,7 @@ def get_top_contribs(
             )
             vector = vector * ln_constant
             if ln_constant.isnan():
-                print("Nan!")
+                print('Nan!')
 
             new_component = Component(
                 layer=cur_layer,
@@ -334,7 +368,7 @@ def get_top_contribs(
                 component_path=feature_vector.component_path + [new_component],
                 vector=vector,
                 layer=cur_layer,
-                sublayer="resid_pre",
+                sublayer='resid_pre',
                 contrib=contrib.item(),
                 contrib_type=ContribType.RAW,
             )
@@ -344,7 +378,7 @@ def get_top_contribs(
     my_token = (
         feature_vector.token
         if feature_vector.token >= 0
-        else cache[get_act_name("resid_pre", 0)].shape[1] + feature_vector.token
+        else cache[get_act_name('resid_pre', 0)].shape[1] + feature_vector.token
     )
     # my_token = feature_vector.token
     embedding_contrib = FeatureVector(
@@ -358,9 +392,9 @@ def get_top_contribs(
         ],
         vector=feature_vector.vector,
         layer=0,
-        sublayer="resid_pre",
+        sublayer='resid_pre',
         contrib=torch.dot(
-            cache[get_act_name("resid_pre", 0)][0, feature_vector.token],
+            cache[get_act_name('resid_pre', 0)][0, feature_vector.token],
             feature_vector.vector,
         ).item(),
         contrib_type=ContribType.RAW,
@@ -390,8 +424,8 @@ def get_top_contribs(
 @torch.no_grad()
 def greedy_get_top_paths(
     model: open_clip.model.CLIP,
-    transcoders: List[SparseAutoencoder],
-    cache: Dict[str, torch.Tensor],
+    transcoders: list[SparseAutoencoder],
+    cache: dict[str, torch.Tensor],
     feature_vector: FeatureVector,
     num_iters: int = 2,
     num_branches: int = 5,
@@ -409,7 +443,7 @@ def greedy_get_top_paths(
     # transcoder feature, then it comes from the passed list of transcoders
     if new_root.component_path[-1].feature_type == FeatureType.TRANSCODER:
         tc = transcoders[new_root.layer]
-        if "ln2.hook_normalized" in tc.cfg.hook_point:
+        if 'ln2.hook_normalized' in tc.cfg.hook_point:
             ln_constant = get_ln_constant(
                 model,
                 cache,
@@ -427,7 +461,7 @@ def greedy_get_top_paths(
         new_paths = []
         for path in cur_paths:
             cur_feature = path[-1]
-            if cur_feature.layer == 0 and cur_feature.sublayer == "resid_pre":
+            if cur_feature.layer == 0 and cur_feature.sublayer == 'resid_pre':
                 continue
 
             cap = None
@@ -469,7 +503,7 @@ def greedy_get_top_paths(
     return all_paths
 
 
-def print_all_paths(paths: List[List[FeatureVector]]):
+def print_all_paths(paths: list[list[FeatureVector]]):
     """Print all paths, each path is a list of FeatureVector.
 
     Example:
@@ -487,13 +521,13 @@ def print_all_paths(paths: List[List[FeatureVector]]):
     if type(paths[0][0]) is list:
         for i, cur_paths in enumerate(paths):
             try:
-                print(f"--- Paths of size {len(cur_paths[0])} ---")
+                print(f'--- Paths of size {len(cur_paths[0])} ---')
             except:
                 continue
             for j, cur_path in enumerate(cur_paths):
-                print(f"Path [{i}][{j}]: ", end="")
+                print(f'Path [{i}][{j}]: ', end='')
                 print(
-                    " <- ".join(
+                    ' <- '.join(
                         map(
                             lambda x: x.__str__(
                                 show_full=False, show_last_token=True
@@ -504,9 +538,9 @@ def print_all_paths(paths: List[List[FeatureVector]]):
                 )
     else:
         for j, cur_path in enumerate(paths):
-            print(f"Path [{j}]: ", end="")
+            print(f'Path [{j}]: ', end='')
             print(
-                " <- ".join(
+                ' <- '.join(
                     map(
                         lambda x: x.__str__(
                             show_full=False, show_last_token=True
@@ -522,11 +556,11 @@ def flatten_nested_list(x):
 
 
 def get_paths_via_filter(
-    all_paths: List[List[FeatureVector]],
-    infix_path: Optional[List[FeatureFilter]] = None,
-    not_infix_path: Optional[List[FeatureFilter]] = None,
-    suffix_path: Optional[List[FeatureFilter]] = None,
-) -> List[List[FeatureVector]]:
+    all_paths: list[list[FeatureVector]],
+    infix_path: Optional[list[FeatureFilter]] = None,
+    not_infix_path: Optional[list[FeatureFilter]] = None,
+    suffix_path: Optional[list[FeatureFilter]] = None,
+) -> list[list[FeatureVector]]:
     retpaths = []
     if type(all_paths[0][0]) is list:
         path_list = flatten_nested_list(all_paths)
