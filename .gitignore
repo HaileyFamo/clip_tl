@@ -15,6 +15,10 @@ data/prep
 data/*.txt
 data/*.csv
 
+# example images
+test_img/
+example_images/
+
 # Outputs
 outputs/
 
