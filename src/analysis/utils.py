@@ -1,5 +1,6 @@
 import ast
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import Union
@@ -63,6 +64,28 @@ def load_all_tc(
     tc_list = []
     for tc_name in tc_names:
         tc = load_sae(tc_name, file_name, config_name)
+        tc_list.append(tc)
+    return tc_list
+
+
+def load_tc_from_pretrained(
+    layers_dir='/nfs/turbo/coe-chaijy-unreplicated/janeding/prisma-sae/layers',
+    weights_file='weights.pt',
+    config_name='config.json',
+) -> list[SparseAutoencoder]:
+    tc_list = []
+    if not os.path.exists(layers_dir):
+        raise FileNotFoundError(f'Directory {layers_dir} does not exist')
+    for i in range(0, 12):
+        weights_file = os.path.join(layers_dir, f'layer{i}', weights_file)
+        config_name = os.path.join(layers_dir, f'layer{i}', config_name)
+        # assert os.path.exists(weights_file), (
+        #     f'Weights file {weights_file} does not exist'
+        # )
+        # assert os.path.exists(config_name), (
+        #     f'Config file {config_name} does not exist'
+        # )
+        tc = SparseAutoencoder.load_from_pretrained(weights_file)
         tc_list.append(tc)
     return tc_list
 
